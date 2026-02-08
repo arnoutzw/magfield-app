@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Magnetic Field Calculator</title>
+  <meta name="description" content="Calculate and visualize magnetic fields from standard geometries">
+  <meta name="theme-color" content="#f59e0b">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='12' fill='none' stroke='%23f59e0b' stroke-width='2.5'/%3E%3Ccircle cx='16' cy='16' r='3' fill='%23f59e0b'/%3E%3C/svg%3E">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/three@0.135.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.135.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.135.0/examples/js/utils/BufferGeometryUtils.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace']
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: #18181b; }
+    ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #52525b; }
+    html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+    #viewport canvas { display: block; width: 100% !important; height: 100% !important; }
+    .param-group { display: none; }
+    .param-group.active { display: block; }
+    input[type=range] { -webkit-appearance: none; background: transparent; width: 100%; }
+    input[type=range]::-webkit-slider-track { height: 6px; background: #27272a; border-radius: 3px; }
+    input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #f59e0b; margin-top: -5px; cursor: pointer; }
+    input[type=range]::-moz-range-track { height: 6px; background: #27272a; border-radius: 3px; border: none; }
+    input[type=range]::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: #f59e0b; border: none; cursor: pointer; }
+    .sidebar-scroll { max-height: calc(100vh - 56px); overflow-y: auto; }
+  </style>
+</head>
+<body class="bg-zinc-950 text-zinc-100 font-sans h-screen flex flex-col">
+
+  <!-- Header -->
+  <header class="sticky top-0 z-40 bg-zinc-900/80 backdrop-blur-sm border-b border-zinc-800 px-4 py-3 flex items-center justify-between shrink-0">
+    <div class="flex items-center gap-3">
+      <button id="sidebarToggle" class="lg:hidden text-zinc-400 hover:text-amber-400 p-1 rounded-lg hover:bg-zinc-800 transition-colors">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+      <div class="flex items-center gap-2">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><path d="M12 4v16M4 12h16" opacity="0.4"/><circle cx="12" cy="12" r="2" fill="#f59e0b"/></svg>
+        <h1 class="font-mono font-bold text-amber-500 text-lg">MagField</h1>
+        <span class="text-xs text-zinc-500 font-mono hidden sm:inline">// magnetic field calculator</span>
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      <span id="fieldMax" class="text-xs font-mono text-zinc-500 hidden sm:inline">B_max: —</span>
+      <button id="installBtn" class="hidden bg-amber-500 hover:bg-amber-400 text-zinc-900 font-mono font-bold px-3 py-1.5 rounded-lg text-xs transition-colors">Install</button>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <div class="flex flex-1 min-h-0">
+
+    <!-- Sidebar -->
+    <aside id="sidebar" class="w-80 shrink-0 bg-zinc-900 border-r border-zinc-700 sidebar-scroll hidden lg:block z-30">
+      <div class="p-5 space-y-5">
+
+        <!-- Geometry Selector -->
+        <div>
+          <div class="flex gap-1.5 mb-3">
+            <div class="w-2.5 h-2.5 rounded-full bg-red-500"></div>
+            <div class="w-2.5 h-2.5 rounded-full bg-yellow-500"></div>
+            <div class="w-2.5 h-2.5 rounded-full bg-green-500"></div>
+          </div>
+          <label class="text-xs text-zinc-500 font-mono block mb-2">GEOMETRY</label>
+          <select id="geometrySelect" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-2.5 font-mono text-sm text-zinc-100 focus:border-amber-500 focus:outline-none cursor-pointer">
+            <option value="wire">Infinite Straight Wire</option>
+            <option value="loop">Current Loop</option>
+            <option value="solenoid">Solenoid</option>
+            <option value="helmholtz">Helmholtz Coil</option>
+            <option value="dipole">Magnetic Dipole</option>
+          </select>
+        </div>
+
+        <!-- Parameters -->
+        <div>
+          <label class="text-xs text-zinc-500 font-mono block mb-3">PARAMETERS</label>
+          <div id="params-wire" class="param-group active space-y-3">
+            <div>
+              <div class="flex justify-between text-xs font-mono mb-1"><span class="text-zinc-400">Current (A)</span><span id="wire-current-val" class="text-amber-400">10</span></div>
+              <input type="range" id="wire-current" min="1" max="100" value="10" step="1">
+            </div>
+          </div>
+          <div id="params-loop" class="param-group space-y-3">
+            <div>
+              <div class="flex justify-between text-xs font-mono mb-1"><span class="text-zinc-400">Current (A)</span><span id="loop-current-val" class="text-amber-400">10</span></div>
+              <input type="range" id="loop-current" min="1" max="100" value="10" step="1">
+            </div>
+            <div>
+              <div class="flex justify-between text-xs font-mono mb-1"><span class="text-zinc-400">Radius (m)</span><span id="loop-radius-val" class="text-amber-400">1.0</span></div>
+              <input type="range" id="loop-radius" min="0.2" max="3" value="1" step="0.1">
+            </div>
+          </div>
+          <div id="params-solenoid" class="param-group space-y-3">
+            <div>
+              <div class="flex justify-between text-xs font-mono mb-1"><span class="text-zinc-400">Current (A)</span><span id="sol-current-val" class="text-amber-400">10</span></div>
+              <input type="range" id="sol-current" min="1" max="100" value="10" step="1">
+            </div>
+            <div>
+              <div class="flex justify-between text-xs font-mono mb-1"><span class="text-zinc-400">Radius (m)</span><span id="sol-radius-val" class="text-amber-400">0.5</span></div>
+              <input type="range" id="sol-radius" min="0.2" max="2" value="0.5" step="0.1">
+            </div>
+            <div>
+              <div class="flex justify-between text-xs font-mono mb-1"><span class="text-zinc-400">Length (m)</span><span id="sol-length-val" class="text-amber-400">2.0</span></div>
+              <input type="range" id="sol-length" min="0.5" max="5" value="2" step="0.1">
+            </div>
+            <div>
+              <div class="flex justify-between text-xs font-mono mb-1"><span class="text-zinc-400">Turns</span><span id="sol-turns-val" class="text-amber-400">20</span></div>
+              <input type="range" id="sol-turns" min="5" max="80" value="20" step="1">
+            </div>
+          </div>
+          <div id="params-helmholtz" class="param-group space-y-3">
+            <div>
+              <div class="flex justify-between text-xs font-mono mb-1"><span class="text-zinc-400">Current (A)</span><span id="helm-current-val" class="text-amber-400">10</span></div>
+              <input type="range" id="helm-current" min="1" max="100" value="10" step="1">
+            </div>
+            <div>
+              <div class="flex justify-between text-xs font-mono mb-1"><span class="text-zinc-400">Radius (m)</span><span id="helm-radius-val" class="text-amber-400">1.0</span></div>
+              <input type="range" id="helm-radius" min="0.3" max="3" value="1" step="0.1">
+            </div>
+            <div>
+              <div class="flex justify-between text-xs font-mono mb-1"><span class="text-zinc-400">Turns per coil</span><span id="helm-turns-val" class="text-amber-400">10</span></div>
+              <input type="range" id="helm-turns" min="1" max="50" value="10" step="1">
+            </div>
+          </div>
+          <div id="params-dipole" class="param-group space-y-3">
+            <div>
+              <div class="flex justify-between text-xs font-mono mb-1"><span class="text-zinc-400">Moment (A&middot;m&sup2;)</span><span id="dip-moment-val" class="text-amber-400">1.0</span></div>
+              <input type="range" id="dip-moment" min="0.1" max="10" value="1" step="0.1">
+            </div>
+          </div>
+        </div>
+
+        <!-- Visualization -->
+        <div>
+          <label class="text-xs text-zinc-500 font-mono block mb-3">VISUALIZATION</label>
+          <div class="space-y-3">
+            <div class="flex gap-2">
+              <button id="modeArrows" class="flex-1 bg-amber-500 text-zinc-900 font-mono font-bold px-3 py-2 rounded-lg text-xs transition-colors">Arrows</button>
+              <button id="modeLines" class="flex-1 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 font-mono px-3 py-2 rounded-lg text-xs transition-colors">Field Lines</button>
+            </div>
+            <div>
+              <div class="flex justify-between text-xs font-mono mb-1"><span class="text-zinc-400">Slice plane</span></div>
+              <div class="flex gap-2">
+                <button data-slice="xz" class="slice-btn flex-1 bg-amber-500/10 text-amber-400 font-mono px-2 py-1.5 rounded-lg text-xs border border-amber-500/50 transition-colors">XZ</button>
+                <button data-slice="xy" class="slice-btn flex-1 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 font-mono px-2 py-1.5 rounded-lg text-xs transition-colors">XY</button>
+                <button data-slice="yz" class="slice-btn flex-1 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 font-mono px-2 py-1.5 rounded-lg text-xs transition-colors">YZ</button>
+                <button data-slice="3d" class="slice-btn flex-1 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 font-mono px-2 py-1.5 rounded-lg text-xs transition-colors">3D</button>
+              </div>
+            </div>
+            <div>
+              <div class="flex justify-between text-xs font-mono mb-1"><span class="text-zinc-400">Density</span><span id="density-val" class="text-amber-400">10</span></div>
+              <input type="range" id="density" min="6" max="18" value="10" step="1">
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-xs text-zinc-400 font-mono">Show geometry</span>
+              <button id="toggleGeom" class="w-8 h-5 rounded-full bg-amber-500 relative transition-all" data-on="true">
+                <div class="w-4 h-4 rounded-full bg-white absolute top-0.5 left-3.5 transition-all"></div>
+              </button>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-xs text-zinc-400 font-mono">Show grid</span>
+              <button id="toggleGrid" class="w-8 h-5 rounded-full bg-amber-500 relative transition-all" data-on="true">
+                <div class="w-4 h-4 rounded-full bg-white absolute top-0.5 left-3.5 transition-all"></div>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Formula -->
+        <div class="bg-zinc-800 border border-zinc-700 rounded-lg p-4">
+          <label class="text-xs text-zinc-500 font-mono block mb-2">FORMULA</label>
+          <div id="formulaContent" class="font-mono text-sm text-amber-400 leading-relaxed"></div>
+          <p id="formulaDesc" class="text-xs text-zinc-500 mt-2 font-sans"></p>
+        </div>
+
+        <!-- Actions -->
+        <button id="computeBtn" class="w-full bg-amber-500 hover:bg-amber-400 text-zinc-900 font-mono font-bold px-4 py-2.5 rounded-lg transition-colors flex items-center justify-center gap-2">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          Compute Field
+        </button>
+        <button id="resetCam" class="w-full bg-zinc-700 hover:bg-zinc-600 text-zinc-300 font-mono text-xs px-3 py-2 rounded-lg transition-colors">Reset Camera</button>
+      </div>
+    </aside>
+
+    <!-- Sidebar overlay for mobile -->
+    <div id="sidebarOverlay" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-20 hidden lg:hidden"></div>
+
+    <!-- 3D Viewport -->
+    <div id="viewport" class="flex-1 relative min-h-0 bg-zinc-950">
+      <div id="loadingOverlay" class="absolute inset-0 flex items-center justify-center bg-zinc-950/80 z-10 pointer-events-none opacity-0 transition-opacity">
+        <div class="text-center">
+          <div class="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+          <span class="text-xs font-mono text-zinc-400">Computing field...</span>
+        </div>
+      </div>
+      <div id="probeInfo" class="absolute bottom-4 left-4 bg-zinc-900/90 backdrop-blur-sm border border-zinc-700 rounded-lg px-3 py-2 text-xs font-mono text-zinc-400 z-10">
+        <span class="text-zinc-500">Click viewport to probe field</span>
+      </div>
+      <div class="absolute top-4 right-4 bg-zinc-900/90 backdrop-blur-sm border border-zinc-700 rounded-lg px-3 py-2 z-10">
+        <div class="text-xs font-mono text-zinc-500 mb-1">|B| magnitude</div>
+        <div class="flex items-center gap-2">
+          <span class="text-xs font-mono text-zinc-500">low</span>
+          <div class="w-24 h-2 rounded-full" style="background: linear-gradient(to right, #451a03, #f59e0b, #fef3c7)"></div>
+          <span class="text-xs font-mono text-zinc-500">high</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (function() {
+    'use strict';
+
+    // ===================== CONSTANTS =====================
+    var MU0 = 4 * Math.PI * 1e-7;
+    var MU0_4PI = 1e-7;
+    var BIOT_SEGMENTS = 80;
+
+    // ===================== STATE =====================
+    var state = {
+      geometry: 'wire',
+      slice: 'xz',
+      mode: 'arrows',
+      density: 10,
+      showGeometry: true,
+      showGrid: true,
+      params: {
+        wire:      { current: 10 },
+        loop:      { current: 10, radius: 1.0 },
+        solenoid:  { current: 10, radius: 0.5, length: 2.0, turns: 20 },
+        helmholtz: { current: 10, radius: 1.0, turns: 10 },
+        dipole:    { moment: 1.0 }
+      }
+    };
+
+    // ===================== PHYSICS =====================
+    // Wire along Y-axis: B circles in XZ plane
+    function wireField(x, y, z) {
+      var rho2 = x * x + z * z; // distance from Y-axis
+      if (rho2 < 0.01) return [0, 0, 0];
+      var rho = Math.sqrt(rho2);
+      var B = MU0 * state.params.wire.current / (2 * Math.PI * rho);
+      // direction: ŷ × ρ̂ = (z/ρ, 0, -x/ρ)
+      return [B * z / rho, 0, -B * x / rho];
+    }
+
+    // Loop in XZ plane at y = cy, axis along Y
+    function loopFieldSingle(x, y, z, current, radius, cy) {
+      var Bx = 0, By = 0, Bz = 0;
+      var dt = (2 * Math.PI) / BIOT_SEGMENTS;
+      for (var i = 0; i < BIOT_SEGMENTS; i++) {
+        var t = i * dt;
+        var ct = Math.cos(t), st = Math.sin(t);
+        // loop point: (R cosθ, cy, R sinθ)
+        // dl = (-R sinθ, 0, R cosθ) dθ
+        var dlx = -radius * st * dt;
+        var dlz = radius * ct * dt;
+        var dx = x - radius * ct, dy = y - cy, dz = z - radius * st;
+        var dist2 = dx * dx + dy * dy + dz * dz;
+        if (dist2 < 1e-4) continue;
+        var invDist3 = 1 / (dist2 * Math.sqrt(dist2));
+        // dl×Δr where dl=(dlx,0,dlz), Δr=(dx,dy,dz)
+        Bx += (-dlz * dy) * invDist3;
+        By += (dlz * dx - dlx * dz) * invDist3;
+        Bz += (dlx * dy) * invDist3;
+      }
+      var f = MU0_4PI * current;
+      return [Bx * f, By * f, Bz * f];
+    }
+
+    function loopField(x, y, z) {
+      var p = state.params.loop;
+      return loopFieldSingle(x, y, z, p.current, p.radius, 0);
+    }
+
+    // Solenoid: loops stacked along Y-axis
+    function solenoidField(x, y, z) {
+      var p = state.params.solenoid;
+      var Bx = 0, By = 0, Bz = 0;
+      var dy = p.length / p.turns;
+      var startY = -p.length / 2;
+      for (var i = 0; i < p.turns; i++) {
+        var ly = startY + (i + 0.5) * dy;
+        var b = loopFieldSingle(x, y, z, p.current, p.radius, ly);
+        Bx += b[0]; By += b[1]; Bz += b[2];
+      }
+      return [Bx, By, Bz];
+    }
+
+    function helmholtzField(x, y, z) {
+      var p = state.params.helmholtz;
+      var sep = p.radius / 2;
+      var Bx = 0, By = 0, Bz = 0;
+      for (var t = 0; t < p.turns; t++) {
+        var b1 = loopFieldSingle(x, y, z, p.current, p.radius, sep);
+        var b2 = loopFieldSingle(x, y, z, p.current, p.radius, -sep);
+        Bx += b1[0] + b2[0]; By += b1[1] + b2[1]; Bz += b1[2] + b2[2];
+      }
+      return [Bx, By, Bz];
+    }
+
+    // Dipole with moment along Y-axis
+    function dipoleField(x, y, z) {
+      var m = state.params.dipole.moment;
+      var r2 = x * x + y * y + z * z;
+      if (r2 < 0.04) return [0, 0, 0];
+      var r = Math.sqrt(r2);
+      var r5 = r2 * r2 * r;
+      var r3 = r * r2;
+      var mdotr = m * y; // m along Y
+      return [
+        MU0_4PI * 3 * mdotr * x / r5,
+        MU0_4PI * (3 * mdotr * y / r5 - m / r3),
+        MU0_4PI * 3 * mdotr * z / r5
+      ];
+    }
+
+    function computeField(x, y, z) {
+      switch (state.geometry) {
+        case 'wire': return wireField(x, y, z);
+        case 'loop': return loopField(x, y, z);
+        case 'solenoid': return solenoidField(x, y, z);
+        case 'helmholtz': return helmholtzField(x, y, z);
+        case 'dipole': return dipoleField(x, y, z);
+      }
+    }
+
+    // ===================== THREE.JS SETUP =====================
+    var viewport = document.getElementById('viewport');
+    var scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x09090b);
+
+    var camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
+    camera.position.set(4, 3, 4);
+
+    var renderer = new THREE.WebGLRenderer({ antialias: true });
+    viewport.insertBefore(renderer.domElement, viewport.firstChild);
+
+    var controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.minDistance = 1;
+    controls.maxDistance = 30;
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+    var dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    dirLight.position.set(5, 8, 5);
+    scene.add(dirLight);
+
+    var gridHelper = new THREE.GridHelper(10, 20, 0x3f3f46, 0x27272a);
+    scene.add(gridHelper);
+    scene.add(new THREE.AxesHelper(1.5));
+
+    // ===================== COLORS =====================
+    var colorLow = new THREE.Color(0x451a03);
+    var colorMid = new THREE.Color(0xf59e0b);
+    var colorHigh = new THREE.Color(0xfef3c7);
+    var tmpColor = new THREE.Color();
+
+    function fieldColor(t) {
+      t = Math.max(0, Math.min(1, t));
+      if (t < 0.5) tmpColor.lerpColors(colorLow, colorMid, t * 2);
+      else tmpColor.lerpColors(colorMid, colorHigh, (t - 0.5) * 2);
+      return tmpColor;
+    }
+
+    // ===================== ARROW INSTANCED MESH =====================
+    function createArrowGeo() {
+      var shaft = new THREE.CylinderBufferGeometry(0.018, 0.018, 0.65, 6);
+      shaft.translate(0, 0.325, 0);
+      var head = new THREE.ConeBufferGeometry(0.055, 0.2, 8);
+      head.translate(0, 0.75, 0);
+      return THREE.BufferGeometryUtils.mergeBufferGeometries([shaft, head]);
+    }
+
+    var arrowGeo = createArrowGeo();
+    var arrowMat = new THREE.MeshPhongMaterial({ color: 0xf59e0b });
+    var MAX_ARROWS = 5000;
+    var arrowMesh;
+
+    function initArrowMesh() {
+      if (arrowMesh) { scene.remove(arrowMesh); arrowMesh.dispose(); }
+      arrowMesh = new THREE.InstancedMesh(arrowGeo, arrowMat, MAX_ARROWS);
+      arrowMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      arrowMesh.count = 0;
+      scene.add(arrowMesh);
+    }
+    initArrowMesh();
+
+    // ===================== GEOMETRY MESHES =====================
+    var geomGroup = new THREE.Group();
+    scene.add(geomGroup);
+
+    function clearGroup(group) {
+      while (group.children.length) {
+        var c = group.children[0];
+        group.remove(c);
+        if (c.geometry) c.geometry.dispose();
+        if (c.material) c.material.dispose();
+      }
+    }
+
+    function buildGeometryMesh() {
+      clearGroup(geomGroup);
+      var wireMat = new THREE.MeshPhongMaterial({ color: 0xf59e0b, emissive: 0xf59e0b, emissiveIntensity: 0.3 });
+
+      switch (state.geometry) {
+        case 'wire': {
+          var g = new THREE.CylinderBufferGeometry(0.04, 0.04, 8, 12);
+          geomGroup.add(new THREE.Mesh(g, wireMat));
+          var ag = new THREE.ConeBufferGeometry(0.08, 0.2, 8);
+          ag.translate(0, 4.1, 0);
+          geomGroup.add(new THREE.Mesh(ag, wireMat));
+          break;
+        }
+        case 'loop': {
+          var r = state.params.loop.radius;
+          var tg = new THREE.TorusBufferGeometry(r, 0.04, 12, 64);
+          tg.rotateX(Math.PI / 2);
+          geomGroup.add(new THREE.Mesh(tg, wireMat));
+          break;
+        }
+        case 'solenoid': {
+          var p = state.params.solenoid;
+          var pts = [];
+          var totalAngle = p.turns * 2 * Math.PI;
+          var steps = p.turns * 40;
+          for (var i = 0; i <= steps; i++) {
+            var t = i / steps;
+            var angle = t * totalAngle;
+            pts.push(new THREE.Vector3(p.radius * Math.cos(angle), -p.length / 2 + t * p.length, p.radius * Math.sin(angle)));
+          }
+          var curve = new THREE.CatmullRomCurve3(pts);
+          var tube = new THREE.TubeBufferGeometry(curve, steps, 0.03, 8, false);
+          geomGroup.add(new THREE.Mesh(tube, wireMat));
+          break;
+        }
+        case 'helmholtz': {
+          var hr = state.params.helmholtz.radius;
+          var sep = hr / 2;
+          [sep, -sep].forEach(function(yy) {
+            var hg = new THREE.TorusBufferGeometry(hr, 0.04, 12, 64);
+            hg.rotateX(Math.PI / 2);
+            hg.translate(0, yy, 0);
+            geomGroup.add(new THREE.Mesh(hg, wireMat));
+          });
+          break;
+        }
+        case 'dipole': {
+          var bn = new THREE.BoxBufferGeometry(0.3, 0.4, 0.3);
+          bn.translate(0, 0.2, 0);
+          geomGroup.add(new THREE.Mesh(bn, new THREE.MeshPhongMaterial({ color: 0xef4444, emissive: 0xef4444, emissiveIntensity: 0.2 })));
+          var bs = new THREE.BoxBufferGeometry(0.3, 0.4, 0.3);
+          bs.translate(0, -0.2, 0);
+          geomGroup.add(new THREE.Mesh(bs, new THREE.MeshPhongMaterial({ color: 0x3b82f6, emissive: 0x3b82f6, emissiveIntensity: 0.2 })));
+          break;
+        }
+      }
+      geomGroup.visible = state.showGeometry;
+    }
+
+    // ===================== FIELD LINES =====================
+    var fieldLineGroup = new THREE.Group();
+    scene.add(fieldLineGroup);
+
+    function traceFieldLine(start, direction, maxSteps, stepSize) {
+      var pts = [start.clone()];
+      var pos = start.clone();
+      var v = new THREE.Vector3();
+      for (var i = 0; i < maxSteps; i++) {
+        var b = computeField(pos.x, pos.y, pos.z);
+        v.set(b[0], b[1], b[2]);
+        var mag = v.length();
+        if (mag < 1e-15) break;
+        v.normalize().multiplyScalar(stepSize * direction);
+        pos.add(v);
+        if (pos.length() > 6) break;
+        pts.push(pos.clone());
+      }
+      return pts;
+    }
+
+    function buildFieldLines() {
+      clearGroup(fieldLineGroup);
+      var seedPoints = [];
+      var nSeeds = 16;
+
+      switch (state.geometry) {
+        case 'wire':
+          // Seeds in XZ plane (perpendicular to wire along Y)
+          for (var i = 0; i < nSeeds; i++) {
+            var angle = (i / nSeeds) * 2 * Math.PI;
+            seedPoints.push(new THREE.Vector3(0.3 * Math.cos(angle), 0, 0.3 * Math.sin(angle)));
+          }
+          break;
+        case 'loop': case 'solenoid': case 'helmholtz':
+          // Seeds near conductor in the meridional (XY) plane
+          var pr = state.geometry === 'loop' ? state.params.loop.radius :
+                   state.geometry === 'solenoid' ? state.params.solenoid.radius :
+                   state.params.helmholtz.radius;
+          for (var i = 0; i < nSeeds; i++) {
+            var a = (i / nSeeds) * Math.PI;
+            seedPoints.push(new THREE.Vector3(pr + 0.15 * Math.cos(a), 0.15 * Math.sin(a), 0));
+            seedPoints.push(new THREE.Vector3(-pr - 0.15 * Math.cos(a), 0.15 * Math.sin(a), 0));
+          }
+          break;
+        case 'dipole':
+          // Seeds in XY plane around the dipole
+          for (var i = 0; i < nSeeds; i++) {
+            var a = (i / nSeeds) * Math.PI - Math.PI / 2;
+            seedPoints.push(new THREE.Vector3(0.35 * Math.cos(a), 0.35 * Math.sin(a), 0));
+          }
+          break;
+      }
+
+      seedPoints.forEach(function(seed) {
+        [1, -1].forEach(function(dir) {
+          var pts = traceFieldLine(seed, dir, 600, 0.04);
+          if (pts.length < 3) return;
+          var mags = pts.map(function(p) { var b = computeField(p.x, p.y, p.z); return Math.sqrt(b[0]*b[0]+b[1]*b[1]+b[2]*b[2]); });
+          var maxM = Math.max.apply(null, mags) || 1;
+          var colors = [];
+          mags.forEach(function(m) { var t = Math.pow(m / maxM, 0.4); fieldColor(t); colors.push(tmpColor.r, tmpColor.g, tmpColor.b); });
+          var geo = new THREE.BufferGeometry().setFromPoints(pts);
+          geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+          fieldLineGroup.add(new THREE.Line(geo, new THREE.LineBasicMaterial({ vertexColors: true })));
+        });
+      });
+    }
+
+    // ===================== ARROW FIELD =====================
+    var _mat4 = new THREE.Matrix4();
+    var _quat = new THREE.Quaternion();
+    var _up = new THREE.Vector3(0, 1, 0);
+    var _dir = new THREE.Vector3();
+    var _pos = new THREE.Vector3();
+    var _scale = new THREE.Vector3();
+
+    function buildArrowField() {
+      var n = state.density;
+      var extent = state.geometry === 'solenoid' ? Math.max(2.5, state.params.solenoid.length) : 2.5;
+      var step = (extent * 2) / (n - 1);
+      var samples = [];
+
+      if (state.slice === '3d') {
+        var n3 = Math.min(n, 10);
+        var s3 = (extent * 2) / (n3 - 1);
+        for (var i = 0; i < n3; i++) for (var j = 0; j < n3; j++) for (var k = 0; k < n3; k++)
+          samples.push([-extent + i * s3, -extent + j * s3, -extent + k * s3]);
+      } else {
+        for (var i = 0; i < n; i++) for (var j = 0; j < n; j++) {
+          var a = -extent + i * step, b = -extent + j * step;
+          if (state.slice === 'xz') samples.push([a, 0, b]);
+          else if (state.slice === 'xy') samples.push([a, b, 0]);
+          else samples.push([0, a, b]);
+        }
+      }
+
+      var fields = samples.map(function(s) { return computeField(s[0], s[1], s[2]); });
+      var mags = fields.map(function(f) { return Math.sqrt(f[0]*f[0]+f[1]*f[1]+f[2]*f[2]); });
+      var finiteMags = mags.filter(function(m) { return isFinite(m) && m > 0; });
+      var maxMag = finiteMags.length ? Math.max.apply(null, finiteMags) : 1;
+
+      document.getElementById('fieldMax').textContent = 'B_max: ' + maxMag.toExponential(2) + ' T';
+
+      // Rebuild instanced mesh with correct color support
+      if (arrowMesh) { scene.remove(arrowMesh); arrowMesh.dispose(); }
+      var count = Math.min(samples.length, MAX_ARROWS);
+      arrowMesh = new THREE.InstancedMesh(arrowGeo, arrowMat, count);
+      arrowMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+
+      var idx = 0;
+      var arrowScale = step * 0.85;
+      var instanceColors = new Float32Array(count * 3);
+
+      for (var i = 0; i < samples.length && idx < count; i++) {
+        var mag = mags[i];
+        if (!isFinite(mag) || mag < maxMag * 1e-4) continue;
+
+        var normMag = Math.pow(mag / maxMag, 0.35);
+        _dir.set(fields[i][0], fields[i][1], fields[i][2]).normalize();
+        _pos.set(samples[i][0], samples[i][1], samples[i][2]);
+
+        if (_dir.length() < 0.5) continue;
+        _quat.setFromUnitVectors(_up, _dir);
+        _scale.setScalar(arrowScale * (0.15 + 0.85 * normMag));
+
+        _mat4.compose(_pos, _quat, _scale);
+        arrowMesh.setMatrixAt(idx, _mat4);
+
+        fieldColor(normMag);
+        instanceColors[idx * 3] = tmpColor.r;
+        instanceColors[idx * 3 + 1] = tmpColor.g;
+        instanceColors[idx * 3 + 2] = tmpColor.b;
+        idx++;
+      }
+
+      arrowMesh.count = idx;
+      arrowMesh.instanceMatrix.needsUpdate = true;
+
+      // Apply instance colors
+      var colorAttr = new THREE.InstancedBufferAttribute(instanceColors.slice(0, idx * 3), 3);
+      arrowMesh.instanceColor = colorAttr;
+
+      scene.add(arrowMesh);
+    }
+
+    // ===================== UPDATE =====================
+    function update() {
+      var overlay = document.getElementById('loadingOverlay');
+      overlay.style.opacity = '1';
+
+      requestAnimationFrame(function() {
+        buildGeometryMesh();
+
+        if (state.mode === 'arrows') {
+          if (arrowMesh) arrowMesh.visible = true;
+          fieldLineGroup.visible = false;
+          buildArrowField();
+        } else {
+          if (arrowMesh) arrowMesh.visible = false;
+          fieldLineGroup.visible = true;
+          buildFieldLines();
+          document.getElementById('fieldMax').textContent = 'B_max: —';
+        }
+
+        gridHelper.visible = state.showGrid;
+        updateFormula();
+        requestAnimationFrame(function() { overlay.style.opacity = '0'; });
+      });
+    }
+
+    // ===================== FORMULAS =====================
+    function updateFormula() {
+      var el = document.getElementById('formulaContent');
+      var desc = document.getElementById('formulaDesc');
+      switch (state.geometry) {
+        case 'wire':
+          el.innerHTML = 'B = &mu;<sub>0</sub>I / (2&pi;r)';
+          desc.textContent = 'Field circles the wire, magnitude falls as 1/r from the wire axis.';
+          break;
+        case 'loop':
+          el.innerHTML = 'B<sub>z</sub> = &mu;<sub>0</sub>IR\u00B2 / 2(R\u00B2+z\u00B2)\u00B3\u02F2';
+          desc.textContent = 'On-axis formula. Off-axis computed numerically via Biot\u2013Savart law.';
+          break;
+        case 'solenoid':
+          el.innerHTML = 'B \u2248 &mu;<sub>0</sub>nI &nbsp;(inside)';
+          desc.textContent = 'Uniform field inside an ideal solenoid. Computed as superposition of current loops.';
+          break;
+        case 'helmholtz':
+          el.innerHTML = 'B \u2248 (4/5)<sup>3/2</sup> &mu;<sub>0</sub>nI/R';
+          desc.textContent = 'Near-uniform field between two coils separated by one radius.';
+          break;
+        case 'dipole':
+          el.innerHTML = 'B = (&mu;<sub>0</sub>/4&pi;)(3(m\u00B7\u0072\u0302)\u0072\u0302 \u2212 m)/r\u00B3';
+          desc.textContent = 'Far-field approximation of a small current loop or bar magnet.';
+          break;
+      }
+    }
+
+    // ===================== PROBE =====================
+    var raycaster = new THREE.Raycaster();
+    var mouse = new THREE.Vector2();
+    var probePlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    var probePoint = new THREE.Vector3();
+
+    renderer.domElement.addEventListener('click', function(e) {
+      var rect = renderer.domElement.getBoundingClientRect();
+      mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(mouse, camera);
+
+      if (state.slice === 'xz' || state.slice === '3d') probePlane.set(new THREE.Vector3(0, 1, 0), 0);
+      else if (state.slice === 'xy') probePlane.set(new THREE.Vector3(0, 0, 1), 0);
+      else probePlane.set(new THREE.Vector3(1, 0, 0), 0);
+
+      if (raycaster.ray.intersectPlane(probePlane, probePoint)) {
+        var b = computeField(probePoint.x, probePoint.y, probePoint.z);
+        var mag = Math.sqrt(b[0]*b[0]+b[1]*b[1]+b[2]*b[2]);
+        document.getElementById('probeInfo').innerHTML = '<span class="text-amber-400">B</span> = ' + mag.toExponential(3) + ' T  at (' + probePoint.x.toFixed(2) + ', ' + probePoint.y.toFixed(2) + ', ' + probePoint.z.toFixed(2) + ')';
+      }
+    });
+
+    // ===================== UI HANDLERS =====================
+    document.getElementById('geometrySelect').addEventListener('change', function(e) {
+      state.geometry = e.target.value;
+      document.querySelectorAll('.param-group').forEach(function(el) { el.classList.remove('active'); });
+      document.getElementById('params-' + e.target.value).classList.add('active');
+      update();
+    });
+
+    var sliders = {
+      'wire-current':  function(v) { state.params.wire.current = +v; document.getElementById('wire-current-val').textContent = v; },
+      'loop-current':  function(v) { state.params.loop.current = +v; document.getElementById('loop-current-val').textContent = v; },
+      'loop-radius':   function(v) { state.params.loop.radius = +v; document.getElementById('loop-radius-val').textContent = (+v).toFixed(1); },
+      'sol-current':   function(v) { state.params.solenoid.current = +v; document.getElementById('sol-current-val').textContent = v; },
+      'sol-radius':    function(v) { state.params.solenoid.radius = +v; document.getElementById('sol-radius-val').textContent = (+v).toFixed(1); },
+      'sol-length':    function(v) { state.params.solenoid.length = +v; document.getElementById('sol-length-val').textContent = (+v).toFixed(1); },
+      'sol-turns':     function(v) { state.params.solenoid.turns = +v; document.getElementById('sol-turns-val').textContent = v; },
+      'helm-current':  function(v) { state.params.helmholtz.current = +v; document.getElementById('helm-current-val').textContent = v; },
+      'helm-radius':   function(v) { state.params.helmholtz.radius = +v; document.getElementById('helm-radius-val').textContent = (+v).toFixed(1); },
+      'helm-turns':    function(v) { state.params.helmholtz.turns = +v; document.getElementById('helm-turns-val').textContent = v; },
+      'dip-moment':    function(v) { state.params.dipole.moment = +v; document.getElementById('dip-moment-val').textContent = (+v).toFixed(1); },
+      'density':       function(v) { state.density = +v; document.getElementById('density-val').textContent = v; }
+    };
+
+    Object.keys(sliders).forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) el.addEventListener('input', function(e) { sliders[id](e.target.value); });
+    });
+
+    document.getElementById('computeBtn').addEventListener('click', update);
+
+    document.getElementById('modeArrows').addEventListener('click', function() {
+      state.mode = 'arrows';
+      document.getElementById('modeArrows').className = 'flex-1 bg-amber-500 text-zinc-900 font-mono font-bold px-3 py-2 rounded-lg text-xs transition-colors';
+      document.getElementById('modeLines').className = 'flex-1 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 font-mono px-3 py-2 rounded-lg text-xs transition-colors';
+      update();
+    });
+    document.getElementById('modeLines').addEventListener('click', function() {
+      state.mode = 'fieldlines';
+      document.getElementById('modeLines').className = 'flex-1 bg-amber-500 text-zinc-900 font-mono font-bold px-3 py-2 rounded-lg text-xs transition-colors';
+      document.getElementById('modeArrows').className = 'flex-1 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 font-mono px-3 py-2 rounded-lg text-xs transition-colors';
+      update();
+    });
+
+    document.querySelectorAll('.slice-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        state.slice = btn.dataset.slice;
+        document.querySelectorAll('.slice-btn').forEach(function(b) {
+          b.className = 'slice-btn flex-1 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 font-mono px-2 py-1.5 rounded-lg text-xs transition-colors';
+        });
+        btn.className = 'slice-btn flex-1 bg-amber-500/10 text-amber-400 font-mono px-2 py-1.5 rounded-lg text-xs border border-amber-500/50 transition-colors';
+        update();
+      });
+    });
+
+    function initToggle(id, setter) {
+      var btn = document.getElementById(id);
+      btn.addEventListener('click', function() {
+        var on = btn.dataset.on === 'true';
+        btn.dataset.on = String(!on);
+        btn.className = 'w-8 h-5 rounded-full ' + (!on ? 'bg-amber-500' : 'bg-zinc-700') + ' relative transition-all';
+        btn.firstElementChild.className = 'w-4 h-4 rounded-full bg-white absolute top-0.5 ' + (!on ? 'left-3.5' : 'left-0.5') + ' transition-all';
+        setter(!on);
+      });
+    }
+    initToggle('toggleGeom', function(v) { state.showGeometry = v; geomGroup.visible = v; });
+    initToggle('toggleGrid', function(v) { state.showGrid = v; gridHelper.visible = v; });
+
+    document.getElementById('resetCam').addEventListener('click', function() {
+      camera.position.set(4, 3, 4);
+      controls.target.set(0, 0, 0);
+      controls.update();
+    });
+
+    // Sidebar mobile
+    var sidebarEl = document.getElementById('sidebar');
+    var overlayEl = document.getElementById('sidebarOverlay');
+    document.getElementById('sidebarToggle').addEventListener('click', function() {
+      sidebarEl.classList.toggle('hidden');
+      sidebarEl.classList.toggle('fixed');
+      sidebarEl.classList.toggle('inset-y-0');
+      sidebarEl.classList.toggle('left-0');
+      sidebarEl.classList.toggle('top-14');
+      overlayEl.classList.toggle('hidden');
+    });
+    overlayEl.addEventListener('click', function() {
+      sidebarEl.classList.add('hidden');
+      sidebarEl.classList.remove('fixed', 'inset-y-0', 'left-0', 'top-14');
+      overlayEl.classList.add('hidden');
+    });
+
+    // ===================== RESIZE =====================
+    function onResize() {
+      var w = viewport.clientWidth;
+      var h = viewport.clientHeight;
+      if (w === 0 || h === 0) return;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    }
+    window.addEventListener('resize', onResize);
+    if (window.ResizeObserver) new ResizeObserver(onResize).observe(viewport);
+    onResize();
+
+    // ===================== ANIMATE =====================
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    // ===================== INITIAL =====================
+    update();
+
+    // ===================== PWA =====================
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js').catch(function() {});
+    }
+    var deferredPrompt = null;
+    window.addEventListener('beforeinstallprompt', function(e) {
+      e.preventDefault();
+      deferredPrompt = e;
+      document.getElementById('installBtn').classList.remove('hidden');
+    });
+    document.getElementById('installBtn').addEventListener('click', function() {
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.then(function() { deferredPrompt = null; document.getElementById('installBtn').classList.add('hidden'); });
+      }
+    });
+
+  })();
+  </script>
+</body>
+</html>
