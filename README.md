@@ -55,6 +55,21 @@ This is a PWA that works entirely in your browser with no server or dependencies
 4. **Change Perspective**: Switch between 3D view and 2D slice planes
 5. **Study Theory**: Review formulas and theoretical context
 
+
+## Theme Support
+
+The app supports two themes:
+
+- **Dark** (default) - Dark background with amber accents
+- **ASML Light** - Light theme following ASML corporate design (deep blue #10069f, cyan accents)
+
+When embedded in the Black Sphere Industries portal, theme changes are communicated via `postMessage`:
+
+```javascript
+// Sent to parent when theme changes
+window.parent.postMessage({ type: "theme-change", theme: "dark" | "asml" }, "*");
+```
+
 ## License
 
 MIT License - feel free to use this project for personal or commercial purposes.
