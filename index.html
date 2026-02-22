@@ -59,7 +59,7 @@
       </div>
     </div>
     <div class="flex items-center gap-2">
-      <span id="fieldMax" class="text-xs font-mono text-zinc-500 hidden sm:inline">B_max: —</span>
+      <span id="fieldMax" class="text-xs font-mono text-zinc-500 hidden sm:inline">B_max: â</span>
       <button id="installBtn" class="hidden bg-amber-500 hover:bg-amber-400 text-zinc-900 font-mono font-bold px-3 py-1.5 rounded-lg text-xs transition-colors">Install</button>
     </div>
   </header>
@@ -257,7 +257,7 @@
       if (rho2 < 0.01) return [0, 0, 0];
       var rho = Math.sqrt(rho2);
       var B = MU0 * state.params.wire.current / (2 * Math.PI * rho);
-      // direction: ŷ × ρ̂ = (z/ρ, 0, -x/ρ)
+      // direction: Å· Ã ÏÌ = (z/Ï, 0, -x/Ï)
       return [B * z / rho, 0, -B * x / rho];
     }
 
@@ -268,15 +268,15 @@
       for (var i = 0; i < BIOT_SEGMENTS; i++) {
         var t = i * dt;
         var ct = Math.cos(t), st = Math.sin(t);
-        // loop point: (R cosθ, cy, R sinθ)
-        // dl = (-R sinθ, 0, R cosθ) dθ
+        // loop point: (R cosÎ¸, cy, R sinÎ¸)
+        // dl = (-R sinÎ¸, 0, R cosÎ¸) dÎ¸
         var dlx = -radius * st * dt;
         var dlz = radius * ct * dt;
         var dx = x - radius * ct, dy = y - cy, dz = z - radius * st;
         var dist2 = dx * dx + dy * dy + dz * dz;
         if (dist2 < 1e-4) continue;
         var invDist3 = 1 / (dist2 * Math.sqrt(dist2));
-        // dl×Δr where dl=(dlx,0,dlz), Δr=(dx,dy,dz)
+        // dlÃÎr where dl=(dlx,0,dlz), Îr=(dx,dy,dz)
         Bx += (-dlz * dy) * invDist3;
         By += (dlz * dx - dlx * dz) * invDist3;
         Bz += (dlx * dy) * invDist3;
@@ -638,7 +638,7 @@
           if (arrowMesh) arrowMesh.visible = false;
           fieldLineGroup.visible = true;
           buildFieldLines();
-          document.getElementById('fieldMax').textContent = 'B_max: —';
+          document.getElementById('fieldMax').textContent = 'B_max: â';
         }
 
         gridHelper.visible = state.showGrid;
@@ -832,5 +832,29 @@
 
   })();
   </script>
+
+<script>
+// Theme change observer - signals to parent portal
+(function() {
+  var lastTheme = '';
+  var observer = new MutationObserver(function(mutations) {
+    mutations.forEach(function(m) {
+      if (m.attributeName === 'class' || m.attributeName === 'data-theme') {
+        var el = document.documentElement;
+        var isDark = el.classList.contains('dark') || el.getAttribute('data-theme') === 'dark';
+        var newTheme = isDark ? 'dark' : 'asml';
+        if (newTheme !== lastTheme) {
+          lastTheme = newTheme;
+          if (window.parent !== window) {
+            try { window.parent.postMessage({ type: 'theme-change', theme: newTheme }, '*'); } catch(e) {}
+          }
+        }
+      }
+    });
+  });
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-theme'] });
+  if (document.body) observer.observe(document.body, { attributes: true, attributeFilter: ['class', 'data-theme'] });
+})();
+</script>
 </body>
 </html>
