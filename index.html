@@ -699,11 +699,17 @@
     });
 
     // ===================== UI HANDLERS =====================
-    document.getElementById('geometrySelect').addEventListener('change', function(e) {
-      state.geometry = e.target.value;
+    function switchGeometry(geo, skipHash) {
+      state.geometry = geo;
+      document.getElementById('geometrySelect').value = geo;
       document.querySelectorAll('.param-group').forEach(function(el) { el.classList.remove('active'); });
-      document.getElementById('params-' + e.target.value).classList.add('active');
+      document.getElementById('params-' + geo).classList.add('active');
+      if (!skipHash) history.replaceState(null, '', '#' + geo);
       update();
+    }
+
+    document.getElementById('geometrySelect').addEventListener('change', function(e) {
+      switchGeometry(e.target.value);
     });
 
     var sliders = {
@@ -811,7 +817,13 @@
     animate();
 
     // ===================== INITIAL =====================
-    update();
+    var _validMagGeos = ['wire', 'loop', 'solenoid', 'helmholtz', 'dipole'];
+    var _initMagGeo = _validMagGeos.indexOf(window.location.hash.slice(1)) !== -1 ? window.location.hash.slice(1) : null;
+    if (_initMagGeo) switchGeometry(_initMagGeo, true); else update();
+    window.addEventListener('hashchange', function() {
+      var g = window.location.hash.slice(1);
+      if (_validMagGeos.indexOf(g) !== -1) switchGeometry(g, true);
+    });
 
     // ===================== PWA =====================
     if ('serviceWorker' in navigator) {
